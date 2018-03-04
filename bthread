@@ -19,7 +19,7 @@ paramID=1;
 while [ ${paramID} -le ${argc} ]; do
 	item_ID=$[${paramID}-1];
 	argv[${item_ID}]=${!paramID};
-	echo "i=${paramID}; argv[i]=${argv[${item_ID}]}";
+#	echo "i=${paramID}; argv[i]=${argv[${item_ID}]}";
 	paramID=$[${paramID}+1];
 done
 
@@ -64,6 +64,14 @@ function newThread {
 
 
 
+function removeWord {
+    local list=${1}
+    local word=${2}
+    
+    echo ${list} | tr ' ' '\n' | egrep -vw "${word}"
+}
+
+
 function waitAll {
 
 	local RUNNING="";
@@ -76,7 +84,8 @@ function waitAll {
 
 	while [ $(countWords ${RUNNING}) -gt 0 ]; do
 		for tid in ${RUNNING}; do ## this will sometimes cause a problem when there are 2 similar PIDs. VERY rare
-			[ ! -d "/proc/${tid}" ] && RUNNING=${RUNNING//${tid}/}
+			#[ ! -d "/proc/${tid}" ] && RUNNING=${RUNNING//${tid}/}
+            [ ! -d "/proc/${tid}" ] && RUNNING=$(removeWord "${RUNNING}" "${tid}")
 		done
 		#timeout=$[${timeout}]
 		sleep "${step}"
@@ -157,12 +166,12 @@ function closeFD {
 
 
 
-echo "argc=${argc}"
+#echo "argc=${argc}"
 
 
 
 for ((i=0; i<${argc}; i++)); do
-	echo "ARGV[${i}]=${argv[${i}]}";
+#	echo "ARGV[${i}]=${argv[${i}]}";
 	newThread "${argv[${i}]}";
 
 done
@@ -173,8 +182,8 @@ done
 waitAll;
 
 echo
-echo "______________________________"
-echo "=============================="
+#echo "______________________________"
+#echo "=============================="
 echo "=============================="
 echo
 
