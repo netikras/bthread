@@ -78,7 +78,7 @@ All the commands will be run in parallel and output given after all of them comp
         
         
         real    0m4.182s
-        user   0m0.008s
+        user    0m0.008s
         sys     0m0.016s
         netikras@netikras-xps ~/workspace2/bthread $ 
 
