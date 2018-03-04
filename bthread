@@ -127,7 +127,7 @@ function countWords {
 
 function openFile {
 
-	local nextFD=$[$(ls /proc/$$/fd |sort |tail -1)+1];
+	local nextFD=$[$(ls /proc/$$/fd |sort -n |tail -1)+1];
 	local name="__tempFile__${RANDOM}";
 	local file="/tmp/${name}";
 
@@ -144,7 +144,7 @@ function openFile {
  
 function openFifo {
 
-	local nextFD=$[$(ls /proc/$$/fd |sort |tail -1)+1];
+	local nextFD=$[$(ls /proc/$$/fd |sort -n |tail -1)+1];
 	local name="__fifoFile__${RANDOM}";
 	local file="/tmp/${name}";
 
