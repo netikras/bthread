@@ -1,0 +1,155 @@
+#!/bin/bash --posix
+
+
+OK=0;
+NOK=1;
+
+CR=$'\r'
+LF=$'\n'
+
+T_ID=()
+T_TID=()
+T_CMD=()
+T_OUTF=()
+T_OUTP=()
+
+
+
+getNextFd() {
+    local file;
+    local fd;
+    local used;
+    result=;
+    
+    
+    for file in /dev/fd/* ; do 
+        fd=${file##*/}; 
+        used[${fd}]=true; 
+    done
+
+    for id in {0..65535} ; do 
+        if [ -z "${used[${id}]}" ] ; then 
+            result=${id}; 
+            break; 
+        fi
+    done
+}
+
+
+open_file() {
+    local fd=${1}
+    local target="/tmp/__tmpfile_$$"
+    result=;
+    
+    if [ -z "${fd}" ] ; then
+        getNextFd;
+        fd=${result:?Cannot get next FD. Cannot open file};
+    fi;
+    
+    target="${target}_${fd}"
+    > ${target}
+    eval "exec ${fd}<>${target}"
+    rm -f "${target}"
+
+    result=${fd};
+}
+
+close_fd() {
+    local fd=${1:?FD not given. Cannot close}
+    eval "exec ${fd}>&-"
+}
+
+tstart() {
+    local cmd=${1:?Thread CMD not given. Cannot start}
+    local id=${#T_ID[@]}
+    local outf="/proc/$$/fd"
+    local fd;
+    result=;
+
+    open_file;
+
+    fd=${result}
+    outf="${outf}/${fd}"
+
+    T_ID[${id}]=${fd}
+    T_CMD[${id}]="${cmd}"
+    T_OUTF[${id}]="${outf}"
+
+    ( eval "${cmd}" >"${outf}" 2>&1 ) &
+
+    T_TID[${id}]="${!}"
+
+    result=${id}
+}
+
+
+
+is_running() {
+    local id=${1:?Thread ID not given. Cannot check whether running}
+    local pid=${T_TID[${id}]}
+
+    if [ -d "/proc/${pid}" ] ; then
+        local pid ppid name state stuff;
+        read pid name state ppid stuff </proc/${pid}/stat
+        if [ "${ppid}" = "${$}" ] ; then return ${OK}; fi;
+        read pid name state ppid stuff </proc/${ppid}/stat
+        if [ "${ppid}" = "${$}" ] ; then return ${OK}; fi;
+    fi
+
+    return ${NOK}
+}
+
+
+collect_finished() {
+    local id=${1:?ID not given. Cannot collect}
+    local file=${T_OUTF[${id}]}
+    local fd=${T_ID[${id}]}
+
+    read -d$'\x01' result <"${file}"
+    T_OUTP[${id}]="${result:-}"
+
+    close_fd "${fd}"
+
+}
+
+print_outp() {
+    local id=${1:?ID not given. Cannot print output}
+    local BUFFER="";
+    
+    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[${id}]}" "${T_OUTF[${id}]}" "${T_CMD[${id}]}" "${T_OUTP[${id}]}"
+
+    BUFFER="${BUFFER}Thread ID:      [${id}]${LF}";
+    BUFFER="${BUFFER}Thread[${id}] TID: [${T_TID[${id}]}]${LF}"
+    BUFFER="${BUFFER}Thread[${id}] CMD: [${T_CMD[${id}]}]${LF}";
+    BUFFER="${BUFFER}Thread[${id}] OUT: [${T_OUTF[${id}]}]${LF}";
+    BUFFER="${BUFFER}${T_OUTP[${id}]}${LF}"
+    BUFFER="${BUFFER}============[EOT]===========${LF}";
+    BUFFER="${BUFFER}${LF}"
+    
+#    echo  "${BUFFER}"
+
+}
+
+wait_all_immed() {
+    while [[ "${#T_OUTP[@]}" -ne "${#T_OUTF[@]}" ]] ; do
+        for id in ${T_ID[@]} ; do
+            if [ -n "${T_OUTP[${id}]}" ] ; then continue; fi;
+            is_running "${id}"
+
+            if [ "${?}" = "${NOK}" ] ; then
+                collect_finished "${id}"
+                print_outp "${id}"
+            fi
+        done
+        sleep .1
+    done
+}
+
+wait_all_seq() {
+    :;
+}
+
+
+
+
+
