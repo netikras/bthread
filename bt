@@ -1,5 +1,49 @@
 #!/bin/bash --posix
 
+: <<README
+This is an implementation of parallel execution in shell. In short, it allows to spawn multiple
+different commands, detach them from main shell, wait untill they are completed, retrieve and
+print outputs of all the spawned commands. E.g.:
+
+#######################################################################
+mint:~/workspace/bthread$ tstart uptime
+[1] 22002
+mint:~/workspace/bthread$ tstart 'vmstat 10 2'
+[1] 22017
+mint:~/workspace/bthread$ time wait_all_immed 
+::::::::::::: [14/22002 /proc/8088/fd/14]
+ > uptime
+
+11:06:56 up 10 days, 22:55, 46 users,  load average: 2,31, 2,12, 2,26
+
+::::::::::::: [15/22017 /proc/8088/fd/15]
+ > vmstat 10 2
+
+procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+ 1  0 9465128 2377060 636864 13532000    1    2    19    24    1    1  7  5 88  0  0
+ 1  0 9465128 2379260 636880 13528352    0    0     0   326 5621 18963  8  6 86  0  0
+
+
+real	0m8,733s
+user	0m0,202s
+sys     0m0,154s
+mint:~/workspace/bthread$
+#######################################################################
+
+In the above example bthread waited for all the threads to complete. Once any thread completes,
+all its output is printed to the stdout. That means, STDOUT and STDERR are combined.
+
+While bthread was initially written in BASH, it was designed to be POSIX-compliant and should run 
+on other shells as well.
+
+In order to improve execution performance bthread avoids spawning subshells. Everything (except for
+a few _eval_ statements and the subprocess spawner) is executed at the same shell level. This is
+achieved by utilising shell scopes: called functions CAN alter caller's variables. In bthread all
+called functions alter a caller's variable *result*. So bear that in mind
+README
+
+
 
 OK=0;
 NOK=1;
@@ -13,7 +57,14 @@ T_CMD=()
 T_OUTF=()
 T_OUTP=()
 
-
+clear_thread() {
+    local id=${1:?ID not given. Cannot clear}
+    unset T_ID[${id}]
+    unset T_TID[${id}]
+    unset T_CMD[${id}]
+    unset T_OUTF[${id}]
+    unset T_OUTP[${id}]
+}
 
 getNextFd() {
     local file;
@@ -28,7 +79,7 @@ getNextFd() {
     done
 
     for id in {0..65535} ; do 
-        if [ -z "${used[${id}]}" ] ; then 
+        if [ -z "${used[${id}]}" ] && [ -z "${T_ID[${id}]}" ] ; then 
             result=${id}; 
             break; 
         fi
@@ -117,17 +168,6 @@ print_outp() {
     local BUFFER="";
     
     printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[${id}]}" "${T_OUTF[${id}]}" "${T_CMD[${id}]}" "${T_OUTP[${id}]}"
-
-    BUFFER="${BUFFER}Thread ID:      [${id}]${LF}";
-    BUFFER="${BUFFER}Thread[${id}] TID: [${T_TID[${id}]}]${LF}"
-    BUFFER="${BUFFER}Thread[${id}] CMD: [${T_CMD[${id}]}]${LF}";
-    BUFFER="${BUFFER}Thread[${id}] OUT: [${T_OUTF[${id}]}]${LF}";
-    BUFFER="${BUFFER}${T_OUTP[${id}]}${LF}"
-    BUFFER="${BUFFER}============[EOT]===========${LF}";
-    BUFFER="${BUFFER}${LF}"
-    
-#    echo  "${BUFFER}"
-
 }
 
 wait_all_immed() {
