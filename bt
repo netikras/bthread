@@ -57,6 +57,20 @@ T_CMD=()
 T_OUTF=()
 T_OUTP=()
 
+
+terminate_all() {
+    for in in ${T_ID[@]} ; do
+        local tid=${T_TID[${id}]};
+        kill -9 ${tid}
+    done
+}
+
+trap terminate_all EXIT
+
+
+
+
+
 clear_thread() {
     local id=${1:?ID not given. Cannot clear}
     unset T_ID[${id}]
@@ -138,13 +152,14 @@ tstart() {
 is_running() {
     local id=${1:?Thread ID not given. Cannot check whether running}
     local pid=${T_TID[${id}]}
+    result=false
 
     if [ -d "/proc/${pid}" ] ; then
         local pid ppid name state stuff;
         read pid name state ppid stuff </proc/${pid}/stat
-        if [ "${ppid}" = "${$}" ] ; then return ${OK}; fi;
+        if [ "${ppid}" = "${$}" ] ; then result=true; return ${OK}; fi;
         read pid name state ppid stuff </proc/${ppid}/stat
-        if [ "${ppid}" = "${$}" ] ; then return ${OK}; fi;
+        if [ "${ppid}" = "${$}" ] ; then result=true; return ${OK}; fi;
     fi
 
     return ${NOK}
@@ -171,6 +186,7 @@ print_outp() {
 }
 
 wait_all_immed() {
+    local id;
     while [[ "${#T_OUTP[@]}" -ne "${#T_OUTF[@]}" ]] ; do
         for id in ${T_ID[@]} ; do
             if [ -n "${T_OUTP[${id}]}" ] ; then continue; fi;
@@ -186,7 +202,20 @@ wait_all_immed() {
 }
 
 wait_all_seq() {
-    :;
+    local id;
+    for id in ${T_ID[@]} ; do
+        result=;
+        while [ "${result}" != "false" ] ; do
+            sleep .1;
+            is_running "${id}"
+        done;
+
+        if [ "${?}" = "${NOK}" ] ; then
+            collect_finished "${id}"
+            print_outp "${id}"
+        fi
+    done
+    sleep .1
 }
 
 
