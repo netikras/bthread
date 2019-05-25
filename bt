@@ -70,6 +70,9 @@ trap terminate_all EXIT
 
 
 
+nop() {
+    :;
+}
 
 clear_thread() {
     local id=${1:?ID not given. Cannot clear}
@@ -170,6 +173,7 @@ collect_finished() {
     local id=${1:?ID not given. Cannot collect}
     local file=${T_OUTF[${id}]}
     local fd=${T_ID[${id}]}
+    result=;
 
     read -d$'\x01' result <"${file}"
     T_OUTP[${id}]="${result:-}"
@@ -186,6 +190,7 @@ print_outp() {
 }
 
 wait_all_immed() {
+    local cmd=${1:-nop}
     local id;
     while [[ "${#T_OUTP[@]}" -ne "${#T_OUTF[@]}" ]] ; do
         for id in ${T_ID[@]} ; do
@@ -194,7 +199,7 @@ wait_all_immed() {
 
             if [ "${?}" = "${NOK}" ] ; then
                 collect_finished "${id}"
-                print_outp "${id}"
+                ${cmd} "${id}"
             fi
         done
         sleep .1
@@ -202,6 +207,7 @@ wait_all_immed() {
 }
 
 wait_all_seq() {
+    local cmd=${1:-nop}
     local id;
     for id in ${T_ID[@]} ; do
         result=;
@@ -210,15 +216,19 @@ wait_all_seq() {
             is_running "${id}"
         done;
 
-        if [ "${?}" = "${NOK}" ] ; then
-            collect_finished "${id}"
-            print_outp "${id}"
-        fi
+        collect_finished "${id}"
+        ${cmd} "${id}"
     done
     sleep .1
 }
 
 
 
+print_all_seq() {
+    wait_all_seq print_outp
+}
+print_all_immed() {
+    wait_all_immed print_outp
+}
 
 
