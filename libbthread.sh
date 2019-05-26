@@ -61,8 +61,8 @@ T_OUTP=()
 
 
 IFS=" ${NL}${TAB}"
-alias kill=/bin/kill
 
+trap terminate_all EXIT
 sleep() {
     if [ -x /bin/sleep ] ; then
         /bin/sleep ${@}
@@ -72,16 +72,20 @@ sleep() {
     fi
 }
 
+terminate_thread() {
+    local id=${1:?ID not given. Cannot terminate}
+    local tid=${T_TID[id]};
+    if [ -n "${tid}" ] && [ -d /proc/${tid} ] ; then
+        /bin/kill -9 ${tid}
+    fi
+}
+
 terminate_all() {
-    for in in ${T_ID[@]} ; do
-        local tid=${T_TID[id]};
-        if [ -n "${tid}" ] && [ -d /proc/${tid} ] ; then
-            kill -9 ${tid}
-        fi
+    for id in ${T_ID[@]} ; do
+        terminate_thread ${id}
     done
 }
 
-trap terminate_all EXIT
 
 
 
@@ -143,7 +147,7 @@ open_file() {
     target="${target}_${fd}"
     > ${target}
     eval "exec ${fd}<>${target}"
-    rm -f "${target}"
+    /bin/rm -f "${target}"
 
     result=${fd};
 }
