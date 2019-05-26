@@ -1,5 +1,5 @@
-#!/bin/bash
-
+#!/bin/bash --posix
+set -x
 
 
 argc=${#};
@@ -47,7 +47,7 @@ function newThread {
 
 	cmd="${1}";
 	tID=$[${#THREAD_IDS[@]}]
-	openFile;
+    fd=$(openFile);
 	fd=$?;
 	outFile="/proc/$$/fd/${fd}";
 
@@ -138,7 +138,7 @@ function openFile {
 	eval "exec ${nextFD}<>${file}";
 	rm -f ${file}
 	
-	return ${nextFD}
+	echo ${nextFD}
 }
 
  

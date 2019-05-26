@@ -60,7 +60,7 @@ T_OUTP=()
 
 terminate_all() {
     for in in ${T_ID[@]} ; do
-        local tid=${T_TID[${id}]};
+        local tid=${T_TID[id]};
         kill -9 ${tid}
     done
 }
@@ -74,13 +74,17 @@ nop() {
     :;
 }
 
+sprintf() {
+    printf -v ${@}
+}
+
 clear_thread() {
     local id=${1:?ID not given. Cannot clear}
-    unset T_ID[${id}]
-    unset T_TID[${id}]
-    unset T_CMD[${id}]
-    unset T_OUTF[${id}]
-    unset T_OUTP[${id}]
+    unset T_ID[id]
+    unset T_TID[id]
+    unset T_CMD[id]
+    unset T_OUTF[id]
+    unset T_OUTP[id]
 }
 
 getNextFd() {
@@ -92,11 +96,11 @@ getNextFd() {
     
     for file in /dev/fd/* ; do 
         fd=${file##*/}; 
-        used[${fd}]=true; 
+        used[fd]=true; 
     done
 
     for id in {0..65535} ; do 
-        if [ -z "${used[${id}]}" ] && [ -z "${T_ID[${id}]}" ] ; then 
+        if [ -z "${used[id]}" ] && [ -z "${T_ID[id]}" ] ; then 
             result=${id}; 
             break; 
         fi
@@ -139,13 +143,13 @@ tstart() {
     fd=${result}
     outf="${outf}/${fd}"
 
-    T_ID[${id}]=${fd}
-    T_CMD[${id}]="${cmd}"
-    T_OUTF[${id}]="${outf}"
+    T_ID[id]=${fd}
+    T_CMD[id]="${cmd}"
+    T_OUTF[id]="${outf}"
 
     ( eval "${cmd}" >"${outf}" 2>&1 ) &
 
-    T_TID[${id}]="${!}"
+    T_TID[id]="${!}"
 
     result=${id}
 }
@@ -154,7 +158,7 @@ tstart() {
 
 is_running() {
     local id=${1:?Thread ID not given. Cannot check whether running}
-    local pid=${T_TID[${id}]}
+    local pid=${T_TID[id]}
     result=false
 
     if [ -d "/proc/${pid}" ] ; then
@@ -171,12 +175,12 @@ is_running() {
 
 collect_finished() {
     local id=${1:?ID not given. Cannot collect}
-    local file=${T_OUTF[${id}]}
-    local fd=${T_ID[${id}]}
+    local file=${T_OUTF[id]}
+    local fd=${T_ID[id]}
     result=;
 
     read -d$'\x01' result <"${file}"
-    T_OUTP[${id}]="${result:-}"
+    T_OUTP[id]="${result:-}"
 
     close_fd "${fd}"
 
@@ -186,7 +190,7 @@ print_outp() {
     local id=${1:?ID not given. Cannot print output}
     local BUFFER="";
     
-    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[${id}]}" "${T_OUTF[${id}]}" "${T_CMD[${id}]}" "${T_OUTP[${id}]}"
+    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[id]}" "${T_OUTF[id]}" "${T_CMD[id]}" "${T_OUTP[id]}"
 }
 
 wait_all_immed() {
@@ -194,7 +198,7 @@ wait_all_immed() {
     local id;
     while [[ "${#T_OUTP[@]}" -ne "${#T_OUTF[@]}" ]] ; do
         for id in ${T_ID[@]} ; do
-            if [ -n "${T_OUTP[${id}]}" ] ; then continue; fi;
+            if [ -n "${T_OUTP[id]}" ] ; then continue; fi;
             is_running "${id}"
 
             if [ "${?}" = "${NOK}" ] ; then
