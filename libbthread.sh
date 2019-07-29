@@ -60,7 +60,7 @@ T_OUTF=()
 T_OUTP=()
 
 
-IFS=" ${NL}${TAB}"
+IFS=" ${LF}${TAB}"
 
 trap terminate_all EXIT
 sleep() {
@@ -168,7 +168,7 @@ tstart() {
     T_CMD[id]="${cmd}"
     T_OUTF[id]="${outf}"
 
-    ( eval "${cmd}" >"${outf}" 2>&1 ) &
+    ( eval '${cmd}' >"${outf}" 2>&1 ) &
 
     T_TID[id]="${!}"
 
@@ -182,7 +182,7 @@ is_running() {
     local pid=${T_TID[id]}
     result=false
 
-    if [ -d "/proc/${pid}" ] ; then
+    if [ -d "/proc/${pid:--}" ] ; then
         local pid ppid name state stuff;
         read pid name state ppid stuff </proc/${pid}/stat
         if [ "${ppid}" = "${$}" ] ; then result=true; return ${OK}; fi;
