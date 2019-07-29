@@ -58,6 +58,7 @@ T_TID=()
 T_CMD=()
 T_OUTF=()
 T_OUTP=()
+T_TITLE=()
 
 
 IFS=" ${LF}${TAB}"
@@ -110,6 +111,7 @@ clear_thread() {
     unset T_CMD[id]
     unset T_OUTF[id]
     unset T_OUTP[id]
+    unset T_TITLE[id]
     close_fd ${id}
 }
 
@@ -167,6 +169,7 @@ tstart() {
     T_ID[id]=${fd}
     T_CMD[id]="${cmd}"
     T_OUTF[id]="${outf}"
+    T_TITLE[id]=${THEADER:-${cmd}}
 
     ( eval '${cmd}' >"${outf}" 2>&1 ) &
 
@@ -210,8 +213,8 @@ collect_finished() {
 print_outp() {
     local id=${1:?ID not given. Cannot print output}
     local BUFFER="";
-    
-    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[id]}" "${T_OUTF[id]}" "${T_CMD[id]}" "${T_OUTP[id]}"
+
+    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[id]}" "${T_OUTF[id]}" "${T_TITLE[id]}" "${T_OUTP[id]}"
 }
 
 wait_all_immed() {
