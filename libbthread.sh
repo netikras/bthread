@@ -64,13 +64,25 @@ T_TITLE=()
 IFS=" ${LF}${TAB}"
 
 trap terminate_all EXIT
+
+## This is a library
+libbthread::log() {
+    local level=${1:-DEBUG}
+    local message=${2:-}
+    my_pid
+    printf "[${level}] ${$}/${_r} ${message}\n" >>/tmp/libbthread.log
+}
+
 sleep() {
     if [ -x /bin/sleep ] ; then
         /bin/sleep ${@}
     else
-        local nil
-        read -t${1} nil /dev/zero
+        read -t${1} </dev/zero
     fi
+}
+
+my_pid() {
+    _r=${BASHPID:-$( :;$SHELL -c 'echo ${PPID}' && :; )}
 }
 
 terminate_thread() {
@@ -101,6 +113,7 @@ sprintf() {
 
 close_fd() {
     local fd=${1:?FD not given. Cannot close}
+    libbthread::log DEBUG "Closing fd: ${fd}"
     eval "exec ${fd}>&-"
 }
 
@@ -138,7 +151,8 @@ getNextFd() {
 
 open_file() {
     local fd=${1}
-    local target="/tmp/__tmpfile_$$"
+    my_pid
+    local target="/tmp/__tmpfile_${_r}"
     result=;
     
     if [ -z "${fd}" ] ; then
@@ -148,6 +162,7 @@ open_file() {
     
     target="${target}_${fd}"
     > ${target}
+    libbthread::log DEBUG "Opening fd ${fd} to ${target}"
     eval "exec ${fd}<>${target}"
     /bin/rm -f "${target}"
 
@@ -157,7 +172,8 @@ open_file() {
 tstart() {
     local cmd=${1:?Thread CMD not given. Cannot start}
     local id=${#T_ID[@]}
-    local outf="/proc/$$/fd"
+    my_pid
+    local outf="/proc/${_r}/fd"
     local fd;
     result=;
 
@@ -171,28 +187,50 @@ tstart() {
     T_OUTF[id]="${outf}"
     T_TITLE[id]=${THEADER:-${cmd}}
 
-    ( eval '${cmd}' >"${outf}" 2>&1 ) &
+    libbthread::exec "${cmd}" "${outf}" "${outf}" 2>/dev/null
+#    ( eval '${cmd}' >"${outf}" 2>"${outf}" ) &
+    _r=${!}
 
-    T_TID[id]="${!}"
+    T_TID[id]="${_r}"
 
     result=${id}
+
+    libbthread::log DEBUG "Started thread id=${id} with outf: ${outf} / ${T_OUTF[id]}, TID: ${_r} / ${T_TID[id]}, cmd: ${cmd}"
 }
 
+libbthread::exec() {
+    local cmd=${1:?CMD missing}
+    local outf=${2:-/dev/null}
+    local errf=${3:-/dev/null}
+    libbthread::log TRACE "Will execute in new subshell: ${cmd}"
+    ( 
+        libbthread::log TRACE "Executing in new subshell: ${cmd}"; 
+        eval '${cmd}' >"${outf}" 2>"${errf}" ; 
+        libbthread::log TRACE "Execution completed. Output should be written to OUT:${outf}, ERR:${errf}" 
+    ) &
+    _r=${!}
+}
 
 
 is_running() {
     local id=${1:?Thread ID not given. Cannot check whether running}
     local pid=${T_TID[id]}
+    local my_pid=${BASHPID}
     result=false
 
     if [ -d "/proc/${pid:--}" ] ; then
         local pid ppid name state stuff;
-        read pid name state ppid stuff </proc/${pid}/stat
-        if [ "${ppid}" = "${$}" ] ; then result=true; return ${OK}; fi;
-        read pid name state ppid stuff </proc/${ppid}/stat
-        if [ "${ppid}" = "${$}" ] ; then result=true; return ${OK}; fi;
+        read _pid name state ppid stuff </proc/${pid}/stat
+        libbthread::log TRACE "Checking if thread PID ${pid} parent ${ppid} is owned by us: ${my_pid}" ## BASHPID ???
+        if [ "${ppid}" = "${my_pid}" ] ; then result=true; return ${OK}; fi;
+#        read _pid name state ppid stuff </proc/${ppid}/stat
+#        libbthread::log TRACE "Checking2 if thread PID ${pid} parent ${ppid} is owned by us: ${my_pid}" ## BASHPID ???
+#        if [ "${ppid}" = "${my_pid}" ] ; then result=true; return ${OK}; fi;
+    else
+        libbthread::log DEBUG "PID /proc/${pid} not found"
     fi
 
+    libbthread::log DEBUG "Process ${pid} is no longer running"
     return ${NOK}
 }
 
@@ -203,11 +241,26 @@ collect_finished() {
     local fd=${T_ID[id]}
     result=;
 
-    read -d$'\x01' result <"${file}"
+    libbthread::log DEBUG "Collecting results from id=${id}, file=${file}"
+    #read -d$'\x01' result <"${file}" || [ -n "${result}" ] || {
+    if [ -f "${file}" ] ; then
+        read -d$'\x01' result <"${file}"
+    else
+        libbthread::log DEBUG "A hard-to-catch error occurred. Here's some debug info - pass it over to the dev"
+        libbthread::log DEBUG "$(ulimit -a)"
+        my_pid
+        mypid=${_r}
+        libbthread::log DEBUG "Current PID:          $$/${mypid}"
+        libbthread::log DEBUG "Initiated with pid:   ${T_OUTF[id]}"
+        libbthread::log DEBUG "TID[${id}]:           ${T_TID[id]}"
+        libbthread::log DEBUG "Current thread FDs:   $(ls -l /proc/${T_TID[id]}/fd/ 2>&1)"
+        libbthread::log DEBUG "Current MY FDs:       $(ls -l /proc/${mypid}/fd/ 2>&1)"
+    fi
+
     T_OUTP[id]="${result}"
 
+    libbthread::log DEBUG "Collected ${id}"
     close_fd "${fd}"
-
 }
 
 print_outp() {
@@ -234,7 +287,7 @@ wait_all_immed() {
     done
 }
 
-wait_all_seq() {
+wait_all_seq() { ## FIXME smth is broken here. processes/files get lost. _immed does not have this problem
     local cmd=${1:-nop}
     local id;
     for id in ${T_ID[@]} ; do
