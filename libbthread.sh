@@ -42,6 +42,8 @@ In order to improve execution performance bthread avoids spawning subshells. Eve
 a few _eval_ statements and the subprocess spawner) is executed at the same shell level. This is
 achieved by utilising shell scopes: called functions CAN alter caller's variables. In bthread all
 called functions alter a caller's variable *result*. So bear that in mind
+
+Healthy tip: before calling tstart make sure you have reset the threads' monior by executing libbthread::reset . Especially if you are working with bthread trees
 README
 
 
@@ -65,7 +67,7 @@ IFS=" ${LF}${TAB}"
 
 trap terminate_all EXIT
 
-## This is a library
+## This is a library, hence the DEBUG loglevel
 libbthread::log() {
     local level=${1:-DEBUG}
     local message=${2:-}
@@ -87,7 +89,7 @@ my_pid() {
 
 terminate_thread() {
     local id=${1:?ID not given. Cannot terminate}
-    local tid=${T_TID[id]};
+    local tid=${T_TID[${id}]};
     if [ -n "${tid}" ] && [ -d /proc/${tid} ] ; then
         /bin/kill -9 ${tid}
     fi
@@ -99,6 +101,12 @@ terminate_all() {
     done
 }
 
+libbthread::reset() {
+    libbthread::log DEBUG "Clearing all threads"
+    for id in ${T_ID[@]} ; do
+        clear_thread "${id}"
+    done
+}
 
 
 
@@ -119,12 +127,13 @@ close_fd() {
 
 clear_thread() {
     local id=${1:?ID not given. Cannot clear}
-    unset T_ID[id]
-    unset T_TID[id]
-    unset T_CMD[id]
-    unset T_OUTF[id]
-    unset T_OUTP[id]
-    unset T_TITLE[id]
+    libbthread::log DEBUG "Clearing thread ${id}: TID=${T_TID[${id}]}, OUTPF=${T_OUTF[${id}]}, CMD=${T_CMD[${id}]}"
+    unset T_ID[${id}]
+    unset T_TID[${id}]
+    unset T_CMD[${id}]
+    unset T_OUTF[${id}]
+    unset T_OUTP[${id}]
+    unset T_TITLE[${id}]
     close_fd ${id}
 }
 
@@ -141,7 +150,7 @@ getNextFd() {
     done
 
     for id in {0..65535} ; do 
-        if [ -z "${used[id]}" ] && [ -z "${T_ID[id]}" ] ; then 
+        if [ -z "${used[${id}]}" ] && [ -z "${T_ID[${id}]}" ] ; then 
             result=${id}; 
             break; 
         fi
@@ -182,20 +191,20 @@ tstart() {
     fd=${result}
     outf="${outf}/${fd}"
 
-    T_ID[id]=${fd}
-    T_CMD[id]="${cmd}"
-    T_OUTF[id]="${outf}"
-    T_TITLE[id]=${THEADER:-${cmd}}
+    T_ID[${id}]=${fd}
+    T_CMD[${id}]="${cmd}"
+    T_OUTF[${id}]="${outf}"
+    T_TITLE[${id}]=${THEADER:-${cmd}}
 
     libbthread::exec "${cmd}" "${outf}" "${outf}" 2>/dev/null
 #    ( eval '${cmd}' >"${outf}" 2>"${outf}" ) &
-    _r=${!}
+#    _r=${!}
 
-    T_TID[id]="${_r}"
+    T_TID[${id}]="${_r}"
 
     result=${id}
 
-    libbthread::log DEBUG "Started thread id=${id} with outf: ${outf} / ${T_OUTF[id]}, TID: ${_r} / ${T_TID[id]}, cmd: ${cmd}"
+    libbthread::log DEBUG "Started thread id=${id} with outf: ${outf} / ${T_OUTF[${id}]}, TID: ${_r} / ${T_TID[${id}]}, cmd: ${cmd}"
 }
 
 libbthread::exec() {
@@ -209,13 +218,17 @@ libbthread::exec() {
         libbthread::log TRACE "Execution completed. Output should be written to OUT:${outf}, ERR:${errf}" 
     ) &
     _r=${!}
+    [ -z "${_r}" ] && {
+        libbthread::log ERROR "Could not obtain PID for new thread"
+    }
 }
 
 
 is_running() {
     local id=${1:?Thread ID not given. Cannot check whether running}
-    local pid=${T_TID[id]}
-    local my_pid=${BASHPID}
+    local pid=${T_TID[${id}]}
+    my_pid
+    local my_pid=${_r}
     result=false
 
     if [ -d "/proc/${pid:--}" ] ; then
@@ -223,9 +236,6 @@ is_running() {
         read _pid name state ppid stuff </proc/${pid}/stat
         libbthread::log TRACE "Checking if thread PID ${pid} parent ${ppid} is owned by us: ${my_pid}" ## BASHPID ???
         if [ "${ppid}" = "${my_pid}" ] ; then result=true; return ${OK}; fi;
-#        read _pid name state ppid stuff </proc/${ppid}/stat
-#        libbthread::log TRACE "Checking2 if thread PID ${pid} parent ${ppid} is owned by us: ${my_pid}" ## BASHPID ???
-#        if [ "${ppid}" = "${my_pid}" ] ; then result=true; return ${OK}; fi;
     else
         libbthread::log DEBUG "PID /proc/${pid} not found"
     fi
@@ -237,8 +247,8 @@ is_running() {
 
 collect_finished() {
     local id=${1:?ID not given. Cannot collect}
-    local file=${T_OUTF[id]}
-    local fd=${T_ID[id]}
+    local file=${T_OUTF[${id}]}
+    local fd=${T_ID[${id}]}
     result=;
 
     libbthread::log DEBUG "Collecting results from id=${id}, file=${file}"
@@ -251,13 +261,17 @@ collect_finished() {
         my_pid
         mypid=${_r}
         libbthread::log DEBUG "Current PID:          $$/${mypid}"
-        libbthread::log DEBUG "Initiated with pid:   ${T_OUTF[id]}"
-        libbthread::log DEBUG "TID[${id}]:           ${T_TID[id]}"
-        libbthread::log DEBUG "Current thread FDs:   $(ls -l /proc/${T_TID[id]}/fd/ 2>&1)"
+        libbthread::log DEBUG "Initiated with pid:   ${T_OUTF[${id}]}"
+        libbthread::log DEBUG "TID[${id}]:           ${T_TID[${id}]}"
+        libbthread::log DEBUG "Current thread FDs:   $(ls -l /proc/${T_TID[${id}]}/fd/ 2>&1)"
         libbthread::log DEBUG "Current MY FDs:       $(ls -l /proc/${mypid}/fd/ 2>&1)"
     fi
 
-    T_OUTP[id]="${result}"
+    [ -n "${T_OUTP[${id}]}" ] && {
+        libbthread::log ERROR "Critical section violation! T_OUTP[${id}] already contains data: ${#T_OUTP[@]} bytes"
+        libbthread::log TRACE "Output collision: ${T_OUTP[${id}]}"
+    }
+    T_OUTP[${id}]="${result}"
 
     libbthread::log DEBUG "Collected ${id}"
     close_fd "${fd}"
@@ -267,7 +281,7 @@ print_outp() {
     local id=${1:?ID not given. Cannot print output}
     local BUFFER="";
 
-    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[id]}" "${T_OUTF[id]}" "${T_TITLE[id]}" "${T_OUTP[id]}"
+    printf "::::::::::::: [%s/%s %s]\n > %s\n\n%s\n\n" "${id}" "${T_TID[${id}]}" "${T_OUTF[${id}]}" "${T_TITLE[${id}]}" "${T_OUTP[${id}]}"
 }
 
 wait_all_immed() {
@@ -275,30 +289,32 @@ wait_all_immed() {
     local id;
     while [[ "${#T_OUTP[@]}" -ne "${#T_OUTF[@]}" ]] ; do
         for id in ${T_ID[@]} ; do
-            if [ -n "${T_OUTP[id]}" ] ; then continue; fi;
+            if [ -n "${T_OUTP[${id}]}" ] ; then continue; fi;
             is_running "${id}"
 
             if [ "${?}" = "${NOK}" ] ; then
                 collect_finished "${id}"
-                ${cmd} "${id}"
+                local __tid=${T_TID[${id}]}
+                ${cmd} "${id}" "${T_OUTP[${id}]}"
             fi
         done
         sleep .1
     done
 }
 
-wait_all_seq() { ## FIXME smth is broken here. processes/files get lost. _immed does not have this problem
+wait_all_seq() {
     local cmd=${1:-nop}
     local id;
     for id in ${T_ID[@]} ; do
         result=;
+        libbthread::log DEBUG "Waiting for thread ${id}/${T_TID[${id}]} to finish. Sequential collection."
         while [ "${result}" != "false" ] ; do
             sleep .1;
             is_running "${id}"
         done;
 
         collect_finished "${id}"
-        ${cmd} "${id}"
+        ${cmd} "${id}" "${T_OUTP[${id}]}"
     done
 }
 
